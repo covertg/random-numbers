@@ -24,7 +24,7 @@ public class MainPRNG {
         OutputStream writer;
         File file;
         try {
-            file = new File("." + File.separatorChar + filename);
+            file = new File("." + File.separatorChar + "results" + File.separatorChar + filename);
             writer = new FileOutputStream(file);
             if (!file.exists())
                 file.createNewFile();
