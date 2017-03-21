@@ -9,12 +9,12 @@ public class MainPRNG {
         long start = System.currentTimeMillis();
 
         writeRandomNumbers("mersenne", new MersenneTwisterAlgo(1));
-        writeRandomNumbers("additive-glibc-random", new AdditiveFeedbackAlgo(1));
+        writeRandomNumbers("additive-glibc-random", new AdditiveFeedbackAlgo(1)); // http://man7.org/linux/man-pages/man3/random.3.html
         writeRandomNumbers("xorshift", new XORShiftAlgo(1));
 
         writeRandomNumbers("lcg-randu", new LinearCongruentialAlgo(65539, 0, 0x80000000, 1));
-        writeRandomNumbers("lcg-unix-rand", new LinearCongruentialAlgo(1103515245, 12345, 0x80000000, 1));
-        writeRandomNumbers("lcg-c++minstd", new LinearCongruentialAlgo(48271, 0, 2147483647, 1));
+        writeRandomNumbers("lcg-unix-rand", new LinearCongruentialAlgo(1103515245, 12345, 0x80000000, 1)); // http://man7.org/linux/man-pages/man3/rand.3.html
+        writeRandomNumbers("lcg-c++minstd", new LinearCongruentialAlgo(48271, 0, 2147483647, 1)); // http://www.cplusplus.com/reference/random/minstd_rand/
         writeRandomNumbers("lcg-java", new JavaLCGAlgo(1));
 
         System.out.println("Total time elapsed: " + (System.currentTimeMillis() - start) / 1000.0d + "s");

@@ -18,6 +18,6 @@ public class JavaLCGAlgo extends RNGAlgo {
     public byte nextByte() {
         rand.nextBytes(tempByte);
         return tempByte[0]; // actually does the same thing as casting nextInt() to byte
-         }
+    }
 
 }
