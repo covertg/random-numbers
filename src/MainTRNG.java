@@ -4,19 +4,30 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.Scanner;
 
 public class MainTRNG {
 
     private static ArrayList<Byte> buffer; // stores received bytes before they're written
     private static ReentrantLock lock; // used so we're not writing to the buffer at the same time from different threads
+    private static boolean running; // true until user input—threads stop once false
 
     public static void main(String[] args) {
         lock = new ReentrantLock(true);
         buffer = new ArrayList<>();
+        running = true;
 
         // two threads: one reads from serial, one writes to file "geiger"
         new Thread(new SerialListener(args)).start();
         new Thread(new ByteWriter("geiger")).start();
+
+        // wait for input. if user sends a q, it's time to close up
+        char in = ' ';
+        Scanner scanner = new Scanner(System.in);
+        while (in != 'q' && in != 'Q') {
+            in = scanner.next().charAt(0);
+        }
+        running = false;
     }
 
     private static class SerialListener implements Runnable {
@@ -25,16 +36,15 @@ public class MainTRNG {
         private InputStream in;
 
         public SerialListener(String[] args) {
-            if (args.length != 1)
-            {
+            // ensure only 1 arg, assume that arg is the port name (i.e COM3, /dev/tty.usbmodem..., etc)
+            if (args.length != 1) {
                 System.out.println("Please specify port name.");
-                for (String s: NRSerialPort.getAvailableSerialPorts())
-                {
-                    System.out.println("Available port: " + s);
+                for (String s : NRSerialPort.getAvailableSerialPorts()) {
+                    System.out.println("Available port: " + s); // List possibilities, just to be nice
                 }
                 System.exit(1);
             }
-
+            System.out.println("Connecting serial and opening file ... send 'q' to stop any time.");
             try {
                 serial = new NRSerialPort(args[0], baudRate);
                 serial.connect();
@@ -47,38 +57,37 @@ public class MainTRNG {
 
         @Override
         public void run() {
+            System.out.println("Serial connected.");
             byte[] tempByte = new byte[8]; // "bytes" sent by arduino through serial are really as a series of 8 ASCII bytes
-            String tempBinary;
+            String tempBinary; // used to convert the ASCII bytes into integers
             int index = 0;
-            try {
-                while (true) {
-                    try {
-                        if (in.available() > 0) {
-                            tempByte[index++] = (byte) in.read();
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    if (index >= 8) {
-                        lock.lock();
-                        try {
-                            tempBinary = new String(tempByte);
-                            System.out.println(tempBinary);
-                            buffer.add((byte) Integer.parseInt(tempBinary, 2));
-                        } finally {
-                            lock.unlock();
-                        }
-                        index = 0;
-                    }
-                }
-            } finally {
+            while (running) {
                 try {
-                    in.close();
-                    serial.disconnect();
-                } catch (IOException e)
-                {
+                    if (in.available() > 0) {
+                        tempByte[index++] = (byte) in.read(); // loop ascii byte by byte (that is, bit by bit)
+                    }
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
+                // once we have 8 bits, we generate a byte
+                if (index >= 8) {
+                    lock.lock(); // reentrantlock ensures the two threads aren't messing with buffer at the same time
+                    try {
+                        tempBinary = new String(tempByte);
+                        System.out.println(tempBinary);
+                        buffer.add((byte) Integer.parseInt(tempBinary, 2));
+                    } finally {
+                        lock.unlock();
+                    }
+                    index = 0;
+                }
+            }
+            try {
+                in.close();
+                serial.disconnect();
+                System.out.println("Serial disconnected.");
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }
@@ -102,41 +111,42 @@ public class MainTRNG {
 
         @Override
         public void run() {
+            System.out.println("File opened for writing.");
             byte[] bytes;
-            try {
-                while (true) {
-                    if (buffer.size() > 0) {
-                        lock.lock();
-                        try {
-                            bytes = new byte[buffer.size()];
-                            for (int i = 0; i < buffer.size(); i++) {
-                                bytes[i] = buffer.get(i);
-                            }
-                            buffer.clear();
-                        } finally {
-                            lock.unlock();
-                        }
-                        try {
-                            System.out.println("writing " + bytes.length + " bytes " + " (count: " + (count += bytes.length) + ")");
-                            writer.write(bytes);
-                            writer.flush();
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    }
+            while (running) {
+                if (buffer.size() > 0) {
+                    // if SerialListener has written anything to the buffer, we lock and copy the buffer into a temporary bytes variable so we can write
+                    lock.lock();
                     try {
-                        TimeUnit.SECONDS.sleep(2);
-                    } catch (InterruptedException e) {
+                        bytes = new byte[buffer.size()];
+                        for (int i = 0; i < buffer.size(); i++) {
+                            bytes[i] = buffer.get(i);
+                        }
+                        buffer.clear(); // clear the buffer
+                    } finally {
+                        lock.unlock();
+                    }
+                    // once we have some bytes, let's write
+                    try {
+                        System.out.println("writing " + bytes.length + " bytes " + " (count: " + (count += bytes.length) + ")");
+                        writer.write(bytes);
+                        writer.flush();
+                    } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
-            } finally {
+                // instead of checking the buffer EVERY.INSTANT we poll it every 2 seconds ... works just fine
                 try {
-                    writer.close();
-                } catch (IOException e)
-                {
+                    TimeUnit.SECONDS.sleep(2);
+                } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
+            }
+            try {
+                writer.close();
+                System.out.println("File closed.");
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }
